@@ -1,5 +1,8 @@
 FROM ubuntu:22.04
 
+# Set non-interactive mode for apt
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
@@ -8,16 +11,15 @@ RUN apt-get update && apt-get install -y \
     nodejs \
     npm \
     coreutils \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install LEAN 4
-RUN curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
+# Install LEAN 4 with proper PATH setup
+RUN curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain leanprover/lean4:stable
 ENV PATH="/root/.elan/bin:${PATH}"
-RUN /root/.elan/bin/elan install leanprover/lean4:stable
-RUN /root/.elan/bin/elan default leanprover/lean4:stable
 
-# Verify LEAN installation
-RUN lean --version
+# Verify LEAN installation and show version
+RUN /root/.elan/bin/lean --version
 
 # Set up Node.js app
 WORKDIR /app
