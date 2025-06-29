@@ -7,9 +7,23 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Enable CORS for your web app
-app.use(cors());
+// Enable CORS with explicit configuration
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Accept'],
+  credentials: false
+}));
+
 app.use(express.json({ limit: '10mb' }));
+
+// Handle preflight requests
+app.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Accept');
+  res.sendStatus(200);
+});
 
 // Health check - test if server is working
 app.get('/health', (req, res) => {
@@ -73,11 +87,12 @@ app.post('/execute', async (req, res) => {
         console.log('LEAN execution error:', error.message);
         console.log('STDERR:', stderr);
         
-        // Check if it's actually a success (LEAN sometimes reports success via stderr)
+        // LEAN might report success even with some output in stderr
         const hasErrors = stderr && (
           stderr.includes('error:') || 
           stderr.includes('failed') ||
-          stderr.includes('unknown identifier')
+          stderr.includes('unknown identifier') ||
+          stderr.includes('unknown tactic')
         );
         
         return res.json({
