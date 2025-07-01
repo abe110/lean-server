@@ -1,9 +1,10 @@
+# Use a stable Ubuntu base image
 FROM ubuntu:22.04
 
-# Set non-interactive mode for apt
+# Set non-interactive mode for package installations to prevent prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
+# Install essential system dependencies for Node.js and LEAN
 RUN apt-get update && apt-get install -y \
     curl \
     git \
@@ -14,26 +15,42 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install LEAN 4 with proper PATH setup
-RUN curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain leanprover/lean4:stable
+# Install elan, the LEAN version manager. This will install LEAN itself.
+# The -y flag accepts defaults, and --no-modify-path prevents it from trying to edit shell files.
+RUN curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --no-modify-path
+
+# Manually add elan's bin directory to the system's PATH environment variable
 ENV PATH="/root/.elan/bin:${PATH}"
 
-# Verify LEAN installation and show version
-RUN /root/.elan/bin/lean --version
+# --- Create and build the LEAN project to get mathlib ---
+# Set the working directory for the LEAN project
+WORKDIR /lean_project
 
-# Set up Node.js app
+# Copy the LEAN project configuration files into the container
+COPY lean-toolchain lakefile.lean Main.lean ./
+
+# Use the 'lake' build tool to download pre-compiled 'olean' files for mathlib
+# This is a critical step for performance, as it avoids compiling mathlib from scratch.
+RUN lake exe cache get
+
+# Build the LEAN project. This ensures all dependencies are correctly linked.
+RUN lake build
+
+# --- Set up the Node.js web server ---
+# Switch the working directory for the Node.js application
 WORKDIR /app
+
+# Copy the package.json and package-lock.json files
 COPY package*.json ./
+
+# Install the Node.js dependencies defined in package.json
 RUN npm install
 
-# Copy server code
+# Copy the server's source code
 COPY server.js ./
 
-# Create temp directory
-RUN mkdir -p /tmp
-
-# Expose port
+# Expose port 3000 to allow traffic to the server
 EXPOSE 3000
 
-# Start server
+# Define the default command to run when the container starts
 CMD ["npm", "start"]
