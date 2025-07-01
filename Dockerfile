@@ -25,26 +25,20 @@ RUN curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init
 # Manually add elan's bin directory to the system's PATH environment variable
 ENV PATH="/root/.elan/bin:${PATH}"
 
+# --- Set up the Unified Application Directory ---
+WORKDIR /app
+
+# Copy ALL project files (Node, LEAN, etc.) into the container's /app directory
+COPY . .
+
 # --- Build the LEAN Project ---
-# Set the working directory for the LEAN project
-WORKDIR /lean_project
-
-# Copy the LEAN project configuration files into the container
-COPY lean-toolchain lakefile.lean Main.lean ./
-
 # Download pre-compiled 'olean' files for mathlib and build the project
+# This is now run from within the unified /app directory
 RUN lake exe cache get
 RUN lake build
 
-# --- Set up and run the Node.js Server ---
-# Switch the working directory for the Node.js application
-WORKDIR /app
-
-# Copy the Node.js project files
-COPY package*.json ./
-COPY server.js ./
-
-# Install the Node.js dependencies
+# --- Install Node.js Dependencies ---
+# This is also run from within the unified /app directory
 RUN npm install
 
 # Expose port 3000 to allow traffic to the server
