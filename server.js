@@ -12,16 +12,13 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // --- Middleware Setup ---
-// Enable Cross-Origin Resource Sharing (CORS) for all origins
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Accept'],
   credentials: false
 }));
-// Enable parsing of JSON bodies with a size limit of 10mb
 app.use(express.json({ limit: '10mb' }));
-// Handle preflight 'OPTIONS' requests automatically for CORS
 app.options('*', (req, res) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET', 'POST', 'OPTIONS');
@@ -30,7 +27,6 @@ app.options('*', (req, res) => {
 });
 
 // --- API Routes ---
-// Health check endpoint to confirm the server is running
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
@@ -50,25 +46,22 @@ app.post('/execute', async (req, res) => {
     });
   }
 
-  // Define the directory where the LEAN project lives inside the container
-  const leanProjectDir = '/lean_project';
+  // Define the file path relative to the current app directory
   const filename = `proof_${Date.now()}.lean`;
-  const filepath = path.join(leanProjectDir, filename);
+  const filepath = path.join(__dirname, filename);
   
   console.log(`Processing proof in: ${filepath}`);
   
   try {
-    // Write the received proof to a temporary file inside the LEAN project directory
+    // Write the received proof to a temporary file
     await fs.writeFile(filepath, proof);
     
-    // MODIFIED: Removed the 'timeout' command from the string.
-    // We will rely on the timeout option in the execPromise call below.
+    // The command now uses the relative path
     const command = `lake env lean ${filepath}`;
     
-    // Execute the command from within the project directory
+    // We no longer need the `cwd` option, as we are already in the correct project directory.
     const { stdout, stderr } = await execPromise(command, { 
-      cwd: leanProjectDir,
-      timeout: 90000, // Use this for a 90-second timeout
+      timeout: 90000, // 90-second timeout
       maxBuffer: 1024 * 1024 // 1MB buffer for stdout/stderr
     });
 
@@ -77,15 +70,13 @@ app.post('/execute', async (req, res) => {
     res.json({
       success: true,
       error: null,
-      diagnostics: stdout || stderr || '', // LEAN often puts useful info in stderr even on success
+      diagnostics: stdout || stderr || '',
       output: stdout || ''
     });
 
   } catch (error) {
-    // This block catches errors from both fs.writeFile and execPromise
-    
     // Handle timeout error specifically
-    if (error.signal === 'SIGTERM' || error.killed) { // A timeout from execPromise will set error.killed to true
+    if (error.signal === 'SIGTERM' || error.killed) {
       console.log('Proof execution timed out');
       return res.status(408).json({
         success: false,
@@ -94,7 +85,7 @@ app.post('/execute', async (req, res) => {
       });
     }
 
-    // Handle other execution errors (e.g., LEAN compilation errors)
+    // Handle other execution errors
     console.log('LEAN execution error:', error.message);
     console.log('STDERR:', error.stderr);
     
@@ -110,7 +101,6 @@ app.post('/execute', async (req, res) => {
     try {
       await fs.unlink(filepath);
     } catch (cleanupError) {
-      // Log a warning if the file couldn't be deleted, but don't crash
       console.warn('Could not delete temp file:', cleanupError.message);
     }
   }
@@ -122,7 +112,7 @@ app.listen(PORT, () => {
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🔧 Execute endpoint: http://localhost:${PORT}/execute`);
 
-  // Log the LEAN version on startup as a diagnostic check to confirm it's installed correctly
+  // Log the LEAN version on startup as a diagnostic check
   exec('lean --version', (err, stdout) => {
     if (err) {
       console.error("-> Could not get LEAN version. Is it in the PATH?");
