@@ -36,11 +36,12 @@ FROM ubuntu:22.04
 # Set non-interactive mode for package installations
 ENV DEBIAN_FRONTEND=noninteractive
 
-# --- MODIFIED: Install a modern version of Node.js ---
-# First, install curl and other necessary certificates
+# Install a modern version of Node.js and other runtime dependencies
+# First, install curl, ca-certificates, and now GIT
 RUN apt-get update && apt-get install -y \
     curl \
     ca-certificates \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Use the official NodeSource script to add the repository for Node.js v18.x
