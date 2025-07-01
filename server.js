@@ -24,8 +24,8 @@ app.use(express.json({ limit: '10mb' }));
 // Handle preflight 'OPTIONS' requests automatically for CORS
 app.options('*', (req, res) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Accept');
+  res.header('Access-Control-Allow-Methods', 'GET', 'POST', 'OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type', 'Accept');
   res.sendStatus(200);
 });
 
@@ -61,14 +61,13 @@ app.post('/execute', async (req, res) => {
     // Write the received proof to a temporary file inside the LEAN project directory
     await fs.writeFile(filepath, proof);
     
-    // The command to execute: use 'lake env lean' to run LEAN with project dependencies (mathlib).
-    // 'timeout 30s' ensures the process is killed if it runs too long.
-    const command = `timeout 30s lake env lean ${filepath}`;
+    // MODIFIED: Increased timeout from 30s to 90s
+    const command = `timeout 90s lake env lean ${filepath}`;
     
     // Execute the command from within the project directory
     const { stdout, stderr } = await execPromise(command, { 
       cwd: leanProjectDir,
-      timeout: 35000, // 35-second total timeout for the exec call itself
+      timeout: 95000, // MODIFIED: Increased exec timeout to 95 seconds
       maxBuffer: 1024 * 1024 // 1MB buffer for stdout/stderr
     });
 
@@ -89,7 +88,7 @@ app.post('/execute', async (req, res) => {
       console.log('Proof execution timed out');
       return res.status(408).json({
         success: false,
-        error: 'Proof execution timed out (30 seconds)',
+        error: 'Proof execution timed out (90 seconds)',
         diagnostics: error.stderr || ''
       });
     }
