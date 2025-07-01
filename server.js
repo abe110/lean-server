@@ -61,13 +61,14 @@ app.post('/execute', async (req, res) => {
     // Write the received proof to a temporary file inside the LEAN project directory
     await fs.writeFile(filepath, proof);
     
-    // MODIFIED: Increased timeout from 30s to 90s
-    const command = `timeout 90s lake env lean ${filepath}`;
+    // MODIFIED: Removed the 'timeout' command from the string.
+    // We will rely on the timeout option in the execPromise call below.
+    const command = `lake env lean ${filepath}`;
     
     // Execute the command from within the project directory
     const { stdout, stderr } = await execPromise(command, { 
       cwd: leanProjectDir,
-      timeout: 95000, // MODIFIED: Increased exec timeout to 95 seconds
+      timeout: 90000, // Use this for a 90-second timeout
       maxBuffer: 1024 * 1024 // 1MB buffer for stdout/stderr
     });
 
@@ -84,7 +85,7 @@ app.post('/execute', async (req, res) => {
     // This block catches errors from both fs.writeFile and execPromise
     
     // Handle timeout error specifically
-    if (error.signal === 'SIGTERM' || error.code === 124) { // 'timeout' command exits with code 124
+    if (error.signal === 'SIGTERM' || error.killed) { // A timeout from execPromise will set error.killed to true
       console.log('Proof execution timed out');
       return res.status(408).json({
         success: false,
