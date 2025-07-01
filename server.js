@@ -1,23 +1,27 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
+const fs = require('fs/promises'); // Using the promises-based version of the 'fs' module
 const { exec } = require('child_process');
 const path = require('path');
+const util = require('util'); // Required for promisify
+
+// Convert the callback-based `exec` function into a promise-based one for use with async/await
+const execPromise = util.promisify(exec);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Enable CORS with explicit configuration
+// --- Middleware Setup ---
+// Enable Cross-Origin Resource Sharing (CORS) for all origins
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Accept'],
   credentials: false
 }));
-
+// Enable parsing of JSON bodies with a size limit of 10mb
 app.use(express.json({ limit: '10mb' }));
-
-// Handle preflight requests
+// Handle preflight 'OPTIONS' requests automatically for CORS
 app.options('*', (req, res) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -25,7 +29,8 @@ app.options('*', (req, res) => {
   res.sendStatus(200);
 });
 
-// Health check - test if server is working
+// --- API Routes ---
+// Health check endpoint to confirm the server is running
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
@@ -34,102 +39,95 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Main endpoint - receives proofs and runs LEAN
+// Main endpoint to receive and execute LEAN proofs
 app.post('/execute', async (req, res) => {
   const { proof } = req.body;
   
-  // Basic validation
   if (!proof || typeof proof !== 'string') {
-    return res.json({
+    return res.status(400).json({
       success: false,
-      error: 'No proof provided'
+      error: 'No proof provided or invalid format'
     });
   }
 
-  // Create unique filename for this proof
-  const timestamp = Date.now();
-  const filename = `proof_${timestamp}.lean`;
-  const filepath = path.join('/tmp', filename);
+  // Define the directory where the LEAN project lives inside the container
+  const leanProjectDir = '/lean_project';
+  const filename = `proof_${Date.now()}.lean`;
+  const filepath = path.join(leanProjectDir, filename);
   
-  console.log(`Processing proof: ${filename}`);
+  console.log(`Processing proof in: ${filepath}`);
   
   try {
-    // Write the proof to a temporary file
-    fs.writeFileSync(filepath, proof);
+    // Write the received proof to a temporary file inside the LEAN project directory
+    await fs.writeFile(filepath, proof);
     
-    // Run LEAN on the file (30 second timeout)
-    const command = `timeout 30s lean ${filepath}`;
+    // The command to execute: use 'lake env lean' to run LEAN with project dependencies (mathlib).
+    // 'timeout 30s' ensures the process is killed if it runs too long.
+    const command = `timeout 30s lake env lean ${filepath}`;
     
-    exec(command, { 
-      maxBuffer: 1024 * 1024,  // 1MB output limit
-      timeout: 35000           // 35 second total timeout
-    }, (error, stdout, stderr) => {
-      
-      // Always clean up the temporary file
-      try {
-        fs.unlinkSync(filepath);
-      } catch (cleanupError) {
-        console.warn('Could not delete temp file:', cleanupError.message);
-      }
-      
-      // Handle timeout
-      if (error && (error.code === 'ETIMEDOUT' || error.signal === 'SIGTERM')) {
-        console.log('Proof execution timed out');
-        return res.json({
-          success: false,
-          error: 'Proof execution timed out (30 seconds)',
-          diagnostics: stderr || ''
-        });
-      }
-      
-      // Handle other errors
-      if (error) {
-        console.log('LEAN execution error:', error.message);
-        console.log('STDERR:', stderr);
-        
-        // LEAN might report success even with some output in stderr
-        const hasErrors = stderr && (
-          stderr.includes('error:') || 
-          stderr.includes('failed') ||
-          stderr.includes('unknown identifier') ||
-          stderr.includes('unknown tactic')
-        );
-        
-        return res.json({
-          success: !hasErrors,
-          error: hasErrors ? stderr : null,
-          diagnostics: stdout || stderr || '',
-          output: stdout || ''
-        });
-      }
-      
-      // Success case
-      console.log('LEAN execution successful');
-      res.json({
-        success: true,
-        error: null,
-        diagnostics: stdout || '',
-        output: stdout || ''
-      });
+    // Execute the command from within the project directory
+    const { stdout, stderr } = await execPromise(command, { 
+      cwd: leanProjectDir,
+      timeout: 35000, // 35-second total timeout for the exec call itself
+      maxBuffer: 1024 * 1024 // 1MB buffer for stdout/stderr
     });
-    
-  } catch (fileError) {
-    // Clean up on error
-    try {
-      fs.unlinkSync(filepath);
-    } catch (e) {}
-    
-    console.error('File error:', fileError.message);
+
+    // Success case
+    console.log('LEAN execution successful');
     res.json({
-      success: false,
-      error: `Server error: ${fileError.message}`
+      success: true,
+      error: null,
+      diagnostics: stdout || stderr || '', // LEAN often puts useful info in stderr even on success
+      output: stdout || ''
     });
+
+  } catch (error) {
+    // This block catches errors from both fs.writeFile and execPromise
+    
+    // Handle timeout error specifically
+    if (error.signal === 'SIGTERM' || error.code === 124) { // 'timeout' command exits with code 124
+      console.log('Proof execution timed out');
+      return res.status(408).json({
+        success: false,
+        error: 'Proof execution timed out (30 seconds)',
+        diagnostics: error.stderr || ''
+      });
+    }
+
+    // Handle other execution errors (e.g., LEAN compilation errors)
+    console.log('LEAN execution error:', error.message);
+    console.log('STDERR:', error.stderr);
+    
+    res.status(422).json({
+      success: false,
+      error: error.stderr || 'An unexpected execution error occurred.',
+      diagnostics: error.stdout || error.stderr || '',
+      output: error.stdout || ''
+    });
+
+  } finally {
+    // Always attempt to clean up the temporary file
+    try {
+      await fs.unlink(filepath);
+    } catch (cleanupError) {
+      // Log a warning if the file couldn't be deleted, but don't crash
+      console.warn('Could not delete temp file:', cleanupError.message);
+    }
   }
 });
 
-// Start the server
+// --- Start the Server ---
 app.listen(PORT, () => {
   console.log(`🚀 LEAN server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🔧 Execute endpoint: http://localhost:${PORT}/execute`);
+
+  // Log the LEAN version on startup as a diagnostic check to confirm it's installed correctly
+  exec('lean --version', (err, stdout) => {
+    if (err) {
+      console.error("-> Could not get LEAN version. Is it in the PATH?");
+      return;
+    }
+    console.log(`-> LEAN environment ready: ${stdout.trim()}`);
+  });
 });
