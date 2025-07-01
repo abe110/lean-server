@@ -1,73 +1,51 @@
-# --- Stage 1: The Builder ---
-# This stage will install all build-time dependencies and build our LEAN project.
-FROM ubuntu:22.04 AS builder
+# Use a single, stable Ubuntu base image for the entire process
+FROM ubuntu:22.04
 
-# Set non-interactive mode for package installations
+# Set non-interactive mode for package installations to prevent prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install essential system dependencies for LEAN
+# --- Install ALL Dependencies at Once ---
+# Install system dependencies for both LEAN and Node.js
 RUN apt-get update && apt-get install -y \
     curl \
     git \
     build-essential \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# --- Install Modern Node.js ---
+# Use the official NodeSource script to add the repository for Node.js v18.x
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+# Now, install Node.js v18 (which includes npm)
+RUN apt-get install -y nodejs
+
+# --- Install LEAN ---
 # Install elan, the LEAN version manager
 RUN curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --no-modify-path
+# Manually add elan's bin directory to the system's PATH environment variable
 ENV PATH="/root/.elan/bin:${PATH}"
 
+# --- Build the LEAN Project ---
 # Set the working directory for the LEAN project
 WORKDIR /lean_project
 
-# Copy the LEAN project configuration files
+# Copy the LEAN project configuration files into the container
 COPY lean-toolchain lakefile.lean Main.lean ./
 
 # Download pre-compiled 'olean' files for mathlib and build the project
 RUN lake exe cache get
 RUN lake build
 
-# The line that deleted .lean source files has been removed to prevent the 'local changes' warning at runtime.
-
-# --- Stage 2: The Final Image ---
-# This stage will be our small, efficient runtime environment.
-FROM ubuntu:22.04
-
-# Set non-interactive mode for package installations
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install a modern version of Node.js and other runtime dependencies
-# First, install curl, ca-certificates, and now GIT
-RUN apt-get update && apt-get install -y \
-    curl \
-    ca-certificates \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Use the official NodeSource script to add the repository for Node.js v18.x
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-
-# Now, install Node.js v18 (which includes npm)
-RUN apt-get install -y nodejs
-# --- End of Node.js installation modification ---
-
-# Set the working directory for our Node.js application
+# --- Set up and run the Node.js Server ---
+# Switch the working directory for the Node.js application
 WORKDIR /app
 
-# Copy the package.json and package-lock.json files
+# Copy the Node.js project files
 COPY package*.json ./
+COPY server.js ./
 
 # Install the Node.js dependencies
 RUN npm install
-
-# Copy the server's source code
-COPY server.js ./
-
-# --- Copy the built LEAN project from the 'builder' stage ---
-COPY --from=builder /lean_project /lean_project
-COPY --from=builder /root/.elan /root/.elan
-
-# Add elan's bin directory to the PATH in our final image
-ENV PATH="/root/.elan/bin:${PATH}"
 
 # Expose port 3000 to allow traffic to the server
 EXPOSE 3000
