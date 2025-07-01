@@ -1,6 +1,7 @@
 {
   "name": "lean-server",
   "version": "1.0.0",
+  "description": "A server to execute LEAN proofs with mathlib support.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
