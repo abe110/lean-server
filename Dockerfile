@@ -26,8 +26,13 @@ COPY lean-toolchain lakefile.lean Main.lean ./
 RUN lake exe cache get
 RUN lake build
 
-# Cleanup step to reduce image size
-RUN find ./.lake/packages/mathlib -type f -name "*.lean" -delete
+# MODIFIED: More precise cleanup step to reduce image size.
+# This now only deletes .lean files from within the main 'Mathlib' source directory,
+# preserving important configuration files like 'lakefile.lean' in the package root.
+RUN find ./.lake/packages/mathlib/Mathlib -type f -name "*.lean" -delete
+
+# NEW: Cleanup step to prevent runtime git checks by removing git metadata from dependencies
+RUN find ./.lake/packages -name ".git" -type d -prune -exec rm -rf {} +
 
 # --- Stage 2: The Final Image ---
 # This stage will be our small, efficient runtime environment.
