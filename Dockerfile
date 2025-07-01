@@ -26,11 +26,7 @@ COPY lean-toolchain lakefile.lean Main.lean ./
 RUN lake exe cache get
 RUN lake build
 
-# Cleanup step to reduce image size by deleting unnecessary source files.
-# This is a good optimization and we will keep it.
-RUN find ./.lake/packages/mathlib/Mathlib -type f -name "*.lean" -delete
-
-# The line that removed .git directories has been deleted from here, as it was causing the runtime error.
+# The line that deleted .lean source files has been removed to prevent the 'local changes' warning at runtime.
 
 # --- Stage 2: The Final Image ---
 # This stage will be our small, efficient runtime environment.
