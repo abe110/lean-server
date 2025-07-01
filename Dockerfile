@@ -26,6 +26,9 @@ COPY lean-toolchain lakefile.lean Main.lean ./
 RUN lake exe cache get
 RUN lake build
 
+# Cleanup step to reduce image size
+RUN find ./.lake/packages/mathlib -type f -name "*.lean" -delete
+
 # --- Stage 2: The Final Image ---
 # This stage will be our small, efficient runtime environment.
 FROM ubuntu:22.04
@@ -33,12 +36,19 @@ FROM ubuntu:22.04
 # Set non-interactive mode for package installations
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install only the runtime dependencies: Node.js and ca-certificates
+# --- MODIFIED: Install a modern version of Node.js ---
+# First, install curl and other necessary certificates
 RUN apt-get update && apt-get install -y \
-    nodejs \
-    npm \
+    curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Use the official NodeSource script to add the repository for Node.js v18.x
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+
+# Now, install Node.js v18 (which includes npm)
+RUN apt-get install -y nodejs
+# --- End of Node.js installation modification ---
 
 # Set the working directory for our Node.js application
 WORKDIR /app
@@ -53,9 +63,7 @@ RUN npm install
 COPY server.js ./
 
 # --- Copy the built LEAN project from the 'builder' stage ---
-# This is the key step: we copy the pre-built project into our final image
 COPY --from=builder /lean_project /lean_project
-# Also copy the elan installation, which contains the 'lean' and 'lake' executables
 COPY --from=builder /root/.elan /root/.elan
 
 # Add elan's bin directory to the PATH in our final image
