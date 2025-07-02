@@ -46,7 +46,6 @@ app.post('/execute', async (req, res) => {
     });
   }
 
-  // Define the file path relative to the current app directory
   const filename = `proof_${Date.now()}.lean`;
   const filepath = path.join(__dirname, filename);
   
@@ -56,10 +55,9 @@ app.post('/execute', async (req, res) => {
     // Write the received proof to a temporary file
     await fs.writeFile(filepath, proof);
     
-    // The command now uses the relative path
-    const command = `lake env lean ${filepath}`;
+    // MODIFIED: Use the absolute path to the 'lake' executable to prevent any PATH issues.
+    const command = `/root/.elan/bin/lake env lean ${filepath}`;
     
-    // We no longer need the `cwd` option, as we are already in the correct project directory.
     const { stdout, stderr } = await execPromise(command, { 
       timeout: 90000, // 90-second timeout
       maxBuffer: 1024 * 1024 // 1MB buffer for stdout/stderr
