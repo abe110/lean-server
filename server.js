@@ -55,13 +55,12 @@ app.post('/execute', async (req, res) => {
     // Write the received proof to a temporary file
     await fs.writeFile(filepath, proof);
     
-    // MODIFIED: Prepended 'strace -f' to get a detailed trace of all system calls.
-    // The '-f' flag follows any child processes that are created.
-    const command = `strace -f /root/.elan/bin/lake env lean ${filepath}`;
+    // Use the absolute path to the 'lake' executable to prevent any PATH issues.
+    const command = `/root/.elan/bin/lake env lean ${filepath}`;
     
     const { stdout, stderr } = await execPromise(command, { 
       timeout: 90000, // 90-second timeout
-      maxBuffer: 1024 * 5 * 1024 // Increased buffer to 5MB for verbose strace output
+      maxBuffer: 1024 * 1024 // 1MB buffer for stdout/stderr
     });
 
     // Success case
@@ -86,8 +85,7 @@ app.post('/execute', async (req, res) => {
 
     // Handle other execution errors
     console.log('LEAN execution error:', error.message);
-    // The strace output will be in stderr, which is now the most important piece of information.
-    console.log('STDERR (strace output):', error.stderr);
+    console.log('STDERR:', error.stderr);
     
     res.status(422).json({
       success: false,
