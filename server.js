@@ -1,12 +1,8 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs/promises'); // Using the promises-based version of the 'fs' module
-const { exec } = require('child_process');
-const path = require('path');
-const util = require('util'); // Required for promisify
-
-// Convert the callback-based `exec` function into a promise-based one for use with async/await
-const execPromise = util.promisify(exec);
+const fs = require('fs/promises');
+const { exec, spawn } = require('child_process'); // Import spawn
+const path = 'path';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,8 +17,8 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.options('*', (req, res) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET', 'POST', 'OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type', 'Accept');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Accept');
   res.sendStatus(200);
 });
 
@@ -55,13 +51,51 @@ app.post('/execute', async (req, res) => {
     // Write the received proof to a temporary file
     await fs.writeFile(filepath, proof);
     
-    // Use the absolute path to the 'lake' executable to prevent any PATH issues.
-    const command = `/root/.elan/bin/lake env lean ${filepath}`;
-    
-    const { stdout, stderr } = await execPromise(command, { 
-      timeout: 90000, // 90-second timeout
-      maxBuffer: 1024 * 1024 // 1MB buffer for stdout/stderr
-    });
+    // This function wraps the spawn process in a Promise to make it work with async/await
+    const runLeanProcess = () => {
+      return new Promise((resolve, reject) => {
+        const command = '/root/.elan/bin/lake';
+        const args = ['env', 'lean', filepath];
+
+        // Use spawn for robust, streaming I/O. This is the core of the fix.
+        const leanProcess = spawn(command, args, { 
+          timeout: 300000 // 5-minute timeout
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        // Listen to the output streams in real-time
+        leanProcess.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+
+        leanProcess.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+        
+        // Handle process exit
+        leanProcess.on('close', (code) => {
+          if (code === 0) {
+            // Success
+            resolve({ stdout, stderr });
+          } else {
+            // Failure
+            const error = new Error(`Process exited with code ${code}`);
+            error.stdout = stdout;
+            error.stderr = stderr;
+            reject(error);
+          }
+        });
+
+        // Handle errors in starting the process itself
+        leanProcess.on('error', (err) => {
+          reject(err);
+        });
+      });
+    };
+
+    const { stdout, stderr } = await runLeanProcess();
 
     // Success case
     console.log('LEAN execution successful');
@@ -78,7 +112,7 @@ app.post('/execute', async (req, res) => {
       console.log('Proof execution timed out');
       return res.status(408).json({
         success: false,
-        error: 'Proof execution timed out (90 seconds)',
+        error: 'Proof execution timed out (5 minutes)',
         diagnostics: error.stderr || ''
       });
     }
