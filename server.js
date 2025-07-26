@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs/promises');
 const { exec, spawn } = require('child_process'); // Import spawn
-const path = 'path';
+const path = require('path'); // Correctly require the 'path' module
 
 const app = express();
 const PORT = process.env.PORT || 3000;
