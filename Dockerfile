@@ -28,23 +28,17 @@ ENV PATH="/root/.elan/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbi
 # --- Set up the Application Directory ---
 WORKDIR /app
 
-# --- Optimized and Robust File Copy using TAR ---
-# This ensures that all file attributes, including symbolic links, are preserved.
+# --- THE FIX IS HERE ---
+# 1. Copy ALL project files first.
+# This ensures that `lakefile.lean`, `ProofVerify/ProofVerify.lean`, etc., are all present.
+COPY . .
 
-# 1. Copy only the files needed for dependency installation first to maximize caching.
-COPY package*.json lakefile.lean lean-toolchain Main.lean ./
-
-# 2. Install Node.js dependencies.
+# 2. Now, install dependencies.
 RUN npm install
 
-# 3. Build the LEAN project. This slow step will now be cached effectively.
+# 3. Now, build the LEAN project. This will succeed because all files are present.
 RUN lake exe cache get
 RUN lake build
-
-# 4. Copy the rest of the application code using TAR.
-# The 'COPY .' command is replaced by this more robust method.
-# We copy the entire project context as a tar stream.
-COPY . .
 
 # --- Final Configuration ---
 # Expose port 3000 to allow traffic to the server
