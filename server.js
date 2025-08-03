@@ -6,6 +6,7 @@ const path = require('path'); // Correctly require the 'path' module
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const PROOFS_DIR = path.join(__dirname, 'Proofs');
 
 // --- Middleware Setup ---
 app.use(cors({
@@ -42,22 +43,30 @@ app.post('/execute', async (req, res) => {
     });
   }
 
+  // Use a consistent filename but place it in the 'Proofs' subdirectory
   const filename = `proof_${Date.now()}.lean`;
-  const filepath = path.join(__dirname, filename);
+  const filepath = path.join(PROOFS_DIR, filename);
   
   console.log(`Processing proof in: ${filepath}`);
   
   try {
-    // Write the received proof to a temporary file
+    // Write the received proof to the temporary file inside the Proofs directory
     await fs.writeFile(filepath, proof);
     
     // This function wraps the spawn process in a Promise to make it work with async/await
     const runLeanProcess = () => {
       return new Promise((resolve, reject) => {
-        const command = '/root/.elan/bin/lake';
-        const args = ['env', 'lean', filepath];
+        // ** THE FIX IS HERE **
+        // We now build the file as a module within the project, which resolves imports.
+        // The module name is derived from the folder and filename.
+        const moduleName = `Proofs.${path.basename(filename, '.lean')}`;
+        
+        const command = 'nice';
+        // The new arguments tell `lake` to `build` our specific module.
+        const args = ['-n', '10', '/root/.elan/bin/lake', 'build', moduleName];
 
-        // Use spawn for robust, streaming I/O. This is the core of the fix.
+        console.log(`Running command: ${command} ${args.join(' ')}`);
+
         const leanProcess = spawn(command, args, { 
           timeout: 300000 // 5-minute timeout
         });
@@ -76,7 +85,9 @@ app.post('/execute', async (req, res) => {
         
         // Handle process exit
         leanProcess.on('close', (code) => {
-          if (code === 0) {
+          // `lake build` outputs warnings to stderr even on success, so we check for specific error text.
+          const hasError = stderr.toLowerCase().includes('error:');
+          if (code === 0 && !hasError) {
             // Success
             resolve({ stdout, stderr });
           } else {
@@ -139,8 +150,17 @@ app.post('/execute', async (req, res) => {
 });
 
 // --- Start the Server ---
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 LEAN server running on port ${PORT}`);
+  
+  // Ensure the 'Proofs' directory exists on startup
+  try {
+    await fs.mkdir(PROOFS_DIR, { recursive: true });
+    console.log(`✅ Proofs directory is ready at ${PROOFS_DIR}`);
+  } catch (error) {
+    console.error('❌ Failed to create Proofs directory:', error);
+  }
+
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🔧 Execute endpoint: http://localhost:${PORT}/execute`);
 
