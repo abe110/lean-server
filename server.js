@@ -6,8 +6,6 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-// ** CHANGE IS HERE **
-// The directory now matches the library name defined in lakefile.lean
 const PROOFS_DIR = path.join(__dirname, 'ProofVerify');
 
 // --- Middleware Setup ---
@@ -55,9 +53,10 @@ app.post('/execute', async (req, res) => {
     
     const runLeanProcess = () => {
       return new Promise((resolve, reject) => {
-        // ** CHANGE IS HERE **
-        // The module name now correctly reflects the new directory structure.
-        const moduleName = `ProofVerify.${path.basename(filename, '.lean')}`;
+        // ** THE FIX IS HERE **
+        // We now tell lake to build the entire library target.
+        // It will automatically find and compile the new file we added.
+        const moduleName = 'ProofVerify';
         
         const command = 'nice';
         const args = ['-n', '10', '/root/.elan/bin/lake', 'build', moduleName];
