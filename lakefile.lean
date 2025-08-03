@@ -4,16 +4,11 @@ open Lake DSL
 package "lean-server-container" where
   -- Package configuration options can be added here
 
--- This is the crucial new line.
--- It tells Lean's build system that the "Proofs" directory contains
--- library files that are part of the project.
-lean_lib "Proofs" where
-
-@[default_target]
-lean_exe "no-op" where
-  root := `Main
-  -- This is a dummy executable target required by `lake`.
-  -- We won't actually run this executable, but it's needed for the build to work.
+-- This defines the main library for our project.
+-- By convention, its source files live in a directory
+-- with the same name (e.g., "LeanServerContainer").
+lean_lib "LeanServerContainer" where
+  -- We can add library-specific configuration here if needed.
 
 -- This line adds mathlib4 as a dependency from its GitHub repository.
 require mathlib from git
