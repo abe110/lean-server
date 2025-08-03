@@ -1,12 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs/promises');
-const { exec, spawn } = require('child_process'); // Import spawn
-const path = require('path'); // Correctly require the 'path' module
+const { exec, spawn } = require('child_process');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const PROOFS_DIR = path.join(__dirname, 'Proofs');
+// ** CHANGE IS HERE **
+// The directory now matches the library name defined in lakefile.lean
+const PROOFS_DIR = path.join(__dirname, 'LeanServerContainer');
 
 // --- Middleware Setup ---
 app.use(cors({
@@ -43,26 +45,21 @@ app.post('/execute', async (req, res) => {
     });
   }
 
-  // Use a consistent filename but place it in the 'Proofs' subdirectory
   const filename = `proof_${Date.now()}.lean`;
   const filepath = path.join(PROOFS_DIR, filename);
   
   console.log(`Processing proof in: ${filepath}`);
   
   try {
-    // Write the received proof to the temporary file inside the Proofs directory
     await fs.writeFile(filepath, proof);
     
-    // This function wraps the spawn process in a Promise to make it work with async/await
     const runLeanProcess = () => {
       return new Promise((resolve, reject) => {
-        // ** THE FIX IS HERE **
-        // We now build the file as a module within the project, which resolves imports.
-        // The module name is derived from the folder and filename.
-        const moduleName = `Proofs.${path.basename(filename, '.lean')}`;
+        // ** CHANGE IS HERE **
+        // The module name now correctly reflects the new directory structure.
+        const moduleName = `LeanServerContainer.${path.basename(filename, '.lean')}`;
         
         const command = 'nice';
-        // The new arguments tell `lake` to `build` our specific module.
         const args = ['-n', '10', '/root/.elan/bin/lake', 'build', moduleName];
 
         console.log(`Running command: ${command} ${args.join(' ')}`);
@@ -74,7 +71,6 @@ app.post('/execute', async (req, res) => {
         let stdout = '';
         let stderr = '';
 
-        // Listen to the output streams in real-time
         leanProcess.stdout.on('data', (data) => {
           stdout += data.toString();
         });
@@ -83,15 +79,11 @@ app.post('/execute', async (req, res) => {
           stderr += data.toString();
         });
         
-        // Handle process exit
         leanProcess.on('close', (code) => {
-          // `lake build` outputs warnings to stderr even on success, so we check for specific error text.
           const hasError = stderr.toLowerCase().includes('error:');
           if (code === 0 && !hasError) {
-            // Success
             resolve({ stdout, stderr });
           } else {
-            // Failure
             const error = new Error(`Process exited with code ${code}`);
             error.stdout = stdout;
             error.stderr = stderr;
@@ -99,7 +91,6 @@ app.post('/execute', async (req, res) => {
           }
         });
 
-        // Handle errors in starting the process itself
         leanProcess.on('error', (err) => {
           reject(err);
         });
@@ -108,7 +99,6 @@ app.post('/execute', async (req, res) => {
 
     const { stdout, stderr } = await runLeanProcess();
 
-    // Success case
     console.log('LEAN execution successful');
     res.json({
       success: true,
@@ -118,7 +108,6 @@ app.post('/execute', async (req, res) => {
     });
 
   } catch (error) {
-    // Handle timeout error specifically
     if (error.signal === 'SIGTERM' || error.killed) {
       console.log('Proof execution timed out');
       return res.status(408).json({
@@ -128,7 +117,6 @@ app.post('/execute', async (req, res) => {
       });
     }
 
-    // Handle other execution errors
     console.log('LEAN execution error:', error.message);
     console.log('STDERR:', error.stderr);
     
@@ -140,7 +128,6 @@ app.post('/execute', async (req, res) => {
     });
 
   } finally {
-    // Always attempt to clean up the temporary file
     try {
       await fs.unlink(filepath);
     } catch (cleanupError) {
@@ -153,7 +140,6 @@ app.post('/execute', async (req, res) => {
 app.listen(PORT, async () => {
   console.log(`🚀 LEAN server running on port ${PORT}`);
   
-  // Ensure the 'Proofs' directory exists on startup
   try {
     await fs.mkdir(PROOFS_DIR, { recursive: true });
     console.log(`✅ Proofs directory is ready at ${PROOFS_DIR}`);
@@ -164,7 +150,6 @@ app.listen(PORT, async () => {
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🔧 Execute endpoint: http://localhost:${PORT}/execute`);
 
-  // Log the LEAN version on startup as a diagnostic check
   exec('lean --version', (err, stdout) => {
     if (err) {
       console.error("-> Could not get LEAN version. Is it in the PATH?");
