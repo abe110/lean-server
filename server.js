@@ -53,13 +53,9 @@ app.post('/execute', async (req, res) => {
     
     const runLeanProcess = () => {
       return new Promise((resolve, reject) => {
-        // ** THE FIX IS HERE **
-        // We now tell lake to build the entire library target.
-        // It will automatically find and compile the new file we added.
-        const moduleName = 'ProofVerify';
-        
+        // This command now builds the default target defined in the lakefile.
         const command = 'nice';
-        const args = ['-n', '10', '/root/.elan/bin/lake', 'build', moduleName];
+        const args = ['-n', '10', '/root/.elan/bin/lake', 'build'];
 
         console.log(`Running command: ${command} ${args.join(' ')}`);
 
