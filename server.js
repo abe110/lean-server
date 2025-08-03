@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 // ** CHANGE IS HERE **
 // The directory now matches the library name defined in lakefile.lean
-const PROOFS_DIR = path.join(__dirname, 'LeanServerContainer');
+const PROOFS_DIR = path.join(__dirname, 'ProofVerify');
 
 // --- Middleware Setup ---
 app.use(cors({
@@ -57,7 +57,7 @@ app.post('/execute', async (req, res) => {
       return new Promise((resolve, reject) => {
         // ** CHANGE IS HERE **
         // The module name now correctly reflects the new directory structure.
-        const moduleName = `LeanServerContainer.${path.basename(filename, '.lean')}`;
+        const moduleName = `ProofVerify.${path.basename(filename, '.lean')}`;
         
         const command = 'nice';
         const args = ['-n', '10', '/root/.elan/bin/lake', 'build', moduleName];
